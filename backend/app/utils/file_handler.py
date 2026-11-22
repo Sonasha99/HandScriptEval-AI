@@ -4,15 +4,16 @@ import shutil
 from pathlib import Path
 from fastapi import UploadFile
 
-UPLOAD_BASE_DIR = Path("d:/IntelliPlace-AI-Answer-Grading-System-main/storage/uploads")
-PAGE_IMAGES_DIR = Path("d:/IntelliPlace-AI-Answer-Grading-System-main/storage/page_images")
-REPORTS_DIR = Path("d:/IntelliPlace-AI-Answer-Grading-System-main/storage/reports")
+STORAGE_BASE = Path(__file__).resolve().parent.parent.parent.parent / "storage"
+UPLOAD_BASE_DIR = STORAGE_BASE / "uploads"
+PAGE_IMAGES_DIR = STORAGE_BASE / "page_images"
+REPORTS_DIR = STORAGE_BASE / "reports"
 
 UPLOAD_BASE_DIR.mkdir(parents=True, exist_ok=True)
 PAGE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-ALLOWED_STUDENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
+ALLOWED_STUDENT_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".txt"}
 ALLOWED_REFERENCE_EXTENSIONS = {".txt", ".pdf", ".docx"}
 
 def validate_file_extension(filename: str, allowed_extensions: set) -> bool:

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 import logging
 
@@ -21,6 +21,7 @@ class EvaluateRequest(BaseModel):
     reference_file_id: Optional[str] = None
     extracted_answers: Dict[str, str]
     qa_bank: Any
+    pages: Optional[List[Dict[str, Any]]] = None
 
 class OverrideRequest(BaseModel):
     question_number: int
@@ -38,14 +39,14 @@ async def evaluate_answers(req: EvaluateRequest):
     try:
         # Convert student answers dict
         student_answers = req.extracted_answers
-                
         qa_bank = req.qa_bank
                 
         result = run_full_evaluation(
             extracted_answers=student_answers,
             qa_bank=qa_bank,
             student_file_id=req.student_file_id,
-            reference_file_id=req.reference_file_id
+            reference_file_id=req.reference_file_id,
+            pages=req.pages
         )
         return result
     except Exception as e:

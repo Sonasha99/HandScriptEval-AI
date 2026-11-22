@@ -23,7 +23,11 @@ async def upload_student_sheet(file: UploadFile = File(...)):
     
     try:
         saved_info = await save_uploaded_file(file, subfolder="students")
-        result = process_student_document(saved_info["stored_path"], saved_info["file_id"])
+        result = process_student_document(
+            file_path=saved_info["stored_path"], 
+            file_id=saved_info["file_id"],
+            original_filename=file.filename
+        )
         result["filename"] = file.filename
         result["file_id"] = saved_info["file_id"]
         result["size_formatted"] = saved_info["size_formatted"]

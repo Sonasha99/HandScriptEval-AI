@@ -8,7 +8,7 @@ from .routes import student, reference, evaluation
 
 # Initialize FastAPI application
 app = FastAPI(
-    title="IntelliPlace AI Answer Sheet Evaluation System",
+    title="HandScriptEval AI",
     description="Automated handwritten answer sheet evaluation powered by OCR and intelligent assessment.",
     version="2.0.0"
 )
@@ -41,9 +41,16 @@ app.include_router(student.router)
 app.include_router(reference.router)
 app.include_router(evaluation.router)
 
+@app.on_event("startup")
+def startup_event():
+    """Warm up evaluation models in background thread for zero-latency first evaluations."""
+    import threading
+    from .services.evaluation_service import get_models
+    threading.Thread(target=get_models, daemon=True).start()
+
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy", "system": "IntelliPlace Evaluation System"}
+    return {"status": "healthy", "system": "HandScriptEval AI"}
 
 # Mount Frontend production build if available
 if os.path.exists(FRONTEND_DIST_DIR):

@@ -60,10 +60,14 @@ dataset/meta_predictions.csv
 Thumbs.db
 
 # =========================
-# Node & Storage
+# Node & Storage & Models
 # =========================
 node_modules/
 **/node_modules/
-storage/uploads/
-storage/page_images/
-storage/reports/
+storage/
+*.safetensors
+*.bin
+*.onnx
+*.zip
+*.tar.gz
+

@@ -9,29 +9,106 @@ import {
 const API_BASE = typeof window !== 'undefined' && window.location.port === "3000" ? "http://localhost:8000" : "";
 
 export default function App() {
-  // Upload States
-  const [studentFile, setStudentFile] = useState(null);
-  const [referenceFile, setReferenceFile] = useState(null);
+  // Upload States - Persisted in localStorage
+  const [studentResult, setStudentResult] = useState(() => {
+    try {
+      const saved = localStorage.getItem("eduvision_studentResult");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [referenceResult, setReferenceResult] = useState(() => {
+    try {
+      const saved = localStorage.getItem("eduvision_referenceResult");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [evaluationData, setEvaluationData] = useState(() => {
+    try {
+      const saved = localStorage.getItem("eduvision_evaluationData");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  const [studentFile, setStudentFile] = useState(() => {
+    try {
+      const saved = localStorage.getItem("eduvision_studentResult");
+      if (saved) {
+        const d = JSON.parse(saved);
+        return d.filename ? { name: d.filename, size: 0 } : null;
+      }
+    } catch {}
+    return null;
+  });
+  const [referenceFile, setReferenceFile] = useState(() => {
+    try {
+      const saved = localStorage.getItem("eduvision_referenceResult");
+      if (saved) {
+        const d = JSON.parse(saved);
+        return d.filename ? { name: d.filename, size: 0 } : null;
+      }
+    } catch {}
+    return null;
+  });
   
   const [studentUploading, setStudentUploading] = useState(false);
   const [referenceUploading, setReferenceUploading] = useState(false);
   const [studentUploadProgress, setStudentUploadProgress] = useState(0);
   const [referenceUploadProgress, setReferenceUploadProgress] = useState(0);
 
-  const [studentResult, setStudentResult] = useState(null);
-  const [referenceResult, setReferenceResult] = useState(null);
-
   // Evaluation States
   const [evaluating, setEvaluating] = useState(false);
   const [evalStep, setEvalStep] = useState("");
-  const [evaluationData, setEvaluationData] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
 
   // View States
-  const [activeTab, setActiveTab] = useState("questions"); // "questions" | "pages"
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem("eduvision_activeTab") || "questions";
+  });
   const [filterMode, setFilterMode] = useState("all"); // "all" | "review" | "correct"
-  const [selectedPageNum, setSelectedPageNum] = useState(1);
+  const [selectedPageNum, setSelectedPageNum] = useState(() => {
+    return parseInt(localStorage.getItem("eduvision_selectedPageNum") || "1", 10);
+  });
   const [expandedQuestions, setExpandedQuestions] = useState({});
+  const [showExtractionPreview, setShowExtractionPreview] = useState(true);
+
+  // Sync to localStorage
+  useEffect(() => {
+    try {
+      if (studentResult) {
+        localStorage.setItem("eduvision_studentResult", JSON.stringify(studentResult));
+      } else {
+        localStorage.removeItem("eduvision_studentResult");
+      }
+    } catch {}
+  }, [studentResult]);
+
+  useEffect(() => {
+    try {
+      if (referenceResult) {
+        localStorage.setItem("eduvision_referenceResult", JSON.stringify(referenceResult));
+      } else {
+        localStorage.removeItem("eduvision_referenceResult");
+      }
+    } catch {}
+  }, [referenceResult]);
+
+  useEffect(() => {
+    try {
+      if (evaluationData) {
+        localStorage.setItem("eduvision_evaluationData", JSON.stringify(evaluationData));
+      } else {
+        localStorage.removeItem("eduvision_evaluationData");
+      }
+    } catch {}
+  }, [evaluationData]);
+
+  useEffect(() => {
+    localStorage.setItem("eduvision_activeTab", activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    localStorage.setItem("eduvision_selectedPageNum", String(selectedPageNum));
+  }, [selectedPageNum]);
 
   // Manual Override Modal
   const [overrideTarget, setOverrideTarget] = useState(null); // question object
@@ -73,6 +150,8 @@ export default function App() {
       }
       const data = await res.json();
       setStudentResult(data);
+      setShowExtractionPreview(true);
+      setSelectedPageNum(1);
       setStudentUploadProgress(100);
     } catch (err) {
       setErrorMessage(err.message);
@@ -131,7 +210,8 @@ export default function App() {
         student_file_id: studentResult.file_id,
         reference_file_id: referenceResult.file_id,
         extracted_answers: studentResult.extracted_answers || studentResult.questions_parsed || {},
-        qa_bank: referenceResult.questions || referenceResult.qa_bank || {}
+        qa_bank: referenceResult.questions || referenceResult.qa_bank || {},
+        pages: studentResult.pages || []
       };
 
       setEvalStep("Evaluating question-by-question semantics, rubrics, and structural depth...");
@@ -205,8 +285,15 @@ export default function App() {
     window.open(`${API_BASE}/api/export/${evaluationData.evaluation_id}/excel`, "_blank");
   };
 
-  // Reset all
+  // Reset all and clear persisted session
   const handleReset = () => {
+    try {
+      localStorage.removeItem("eduvision_studentResult");
+      localStorage.removeItem("eduvision_referenceResult");
+      localStorage.removeItem("eduvision_evaluationData");
+      localStorage.removeItem("eduvision_activeTab");
+      localStorage.removeItem("eduvision_selectedPageNum");
+    } catch {}
     setStudentFile(null);
     setReferenceFile(null);
     setStudentResult(null);
@@ -214,6 +301,8 @@ export default function App() {
     setEvaluationData(null);
     setErrorMessage("");
     setActiveTab("questions");
+    setSelectedPageNum(1);
+    setShowExtractionPreview(true);
   };
 
   // Filter questions
@@ -229,11 +318,11 @@ export default function App() {
       <header className="border-b border-[#27272a] bg-[#09090b]/80 backdrop-blur sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded border border-neutral-700 bg-neutral-900 flex items-center justify-center font-bold text-white tracking-wider">
-              IP
+            <div className="w-8 h-8 rounded border border-neutral-700 bg-neutral-900 flex items-center justify-center font-bold text-white tracking-wider text-xs">
+              HSE
             </div>
             <div>
-              <span className="font-semibold text-white tracking-tight text-base">IntelliPlace</span>
+              <span className="font-semibold text-white tracking-tight text-base">HandScriptEval AI</span>
               <span className="text-neutral-500 text-xs ml-2 border border-neutral-800 px-1.5 py-0.5 rounded font-mono">v2.0</span>
             </div>
           </div>
@@ -243,13 +332,14 @@ export default function App() {
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>FastAPI Backend Active</span>
             </div>
-            {evaluationData && (
+            {(studentResult || referenceResult || evaluationData) && (
               <button 
                 onClick={handleReset}
-                className="flex items-center space-x-1.5 text-xs border border-neutral-800 hover:border-neutral-600 bg-neutral-950 px-3 py-1.5 rounded text-neutral-300 transition-colors"
+                className="flex items-center space-x-1.5 text-xs border border-neutral-700 hover:border-red-500 bg-neutral-900 px-3 py-1.5 rounded text-neutral-300 hover:text-red-400 transition-colors"
+                title="Clear current data and start a new evaluation"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>New Evaluation</span>
+                <span>Reset Session</span>
               </button>
             )}
           </div>
@@ -277,7 +367,7 @@ export default function App() {
             {/* Hero Title */}
             <div className="text-center max-w-2xl mx-auto space-y-3">
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-                Answer Evaluation System
+                HandScriptEval AI
               </h1>
               <p className="text-neutral-400 text-sm sm:text-base leading-relaxed">
                 Automated handwritten answer sheet evaluation powered by OCR and intelligent assessment.
@@ -301,7 +391,7 @@ export default function App() {
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-mono tracking-wider text-neutral-400 uppercase">PIPELINE 1 : OCR MODEL</span>
+                    <span className="text-xs font-mono tracking-wider text-neutral-400 uppercase">PIPELINE 1 : TEXT EXTRACTION</span>
                     {studentResult && (
                       <span className="text-xs px-2 py-0.5 rounded bg-neutral-800 text-neutral-200 border border-neutral-700 flex items-center space-x-1">
                         <Check className="w-3 h-3 text-white" />
@@ -312,14 +402,14 @@ export default function App() {
 
                   <h3 className="text-lg font-semibold text-white mb-1">Upload Student Answer Sheet</h3>
                   <p className="text-neutral-400 text-xs mb-5">
-                    Upload the handwritten answer sheet that needs to be evaluated.
+                    Upload handwritten sheet (PDF, images) or extracted OCR text (.txt).
                   </p>
 
                   <input 
                     type="file" 
                     ref={studentInputRef} 
                     onChange={(e) => handleStudentUpload(e.target.files?.[0])}
-                    accept=".pdf,.png,.jpg,.jpeg" 
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.txt" 
                     className="hidden" 
                   />
 
@@ -333,7 +423,7 @@ export default function App() {
                         <Upload className="w-5 h-5 text-neutral-400" />
                       </div>
                       <p className="text-sm font-medium text-white mb-1">Click to upload or drag & drop</p>
-                      <p className="text-xs text-neutral-500">Supports PDF, PNG, JPG (Multi-page supported)</p>
+                      <p className="text-xs text-neutral-500">Supports PDF, PNG, JPG, or extracted text (.txt)</p>
                     </div>
                   ) : (
                     <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-950 space-y-3">
@@ -358,7 +448,7 @@ export default function App() {
                           <div className="w-full bg-neutral-800 h-1 rounded overflow-hidden">
                             <div className="bg-white h-full transition-all duration-300" style={{ width: `${studentUploadProgress}%` }}></div>
                           </div>
-                          <p className="text-[11px] text-neutral-400 font-mono">Running Tesseract & PyMuPDF OCR...</p>
+                          <p className="text-[11px] text-neutral-400 font-mono">Running Qwen2.5-VL Vision Text Extraction...</p>
                         </div>
                       )}
 
@@ -373,6 +463,19 @@ export default function App() {
                             <span className="text-white">
                               {Object.keys(studentResult.extracted_answers || studentResult.questions_parsed || {}).length}
                             </span>
+                          </div>
+                          <div className="pt-2 flex items-center justify-between border-t border-neutral-900">
+                            <span className="text-[11px] text-emerald-400 font-sans flex items-center space-x-1">
+                              <span>✓</span>
+                              <span>Extracted</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowExtractionPreview(!showExtractionPreview)}
+                              className="text-[11px] text-white underline hover:text-neutral-300 font-sans"
+                            >
+                              {showExtractionPreview ? "Hide Pages ▲" : "View Pages ▼"}
+                            </button>
                           </div>
                         </div>
                       )}
@@ -407,7 +510,7 @@ export default function App() {
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-mono tracking-wider text-neutral-400 uppercase">PIPELINE 2 : REFERENCE MODEL</span>
+                    <span className="text-xs font-mono tracking-wider text-neutral-400 uppercase">PIPELINE 2 : REFERENCE & RUBRIC KEY</span>
                     {referenceResult && (
                       <span className="text-xs px-2 py-0.5 rounded bg-neutral-800 text-neutral-200 border border-neutral-700 flex items-center space-x-1">
                         <Check className="w-3 h-3 text-white" />
@@ -418,7 +521,7 @@ export default function App() {
 
                   <h3 className="text-lg font-semibold text-white mb-1">Upload Reference Answer Key</h3>
                   <p className="text-neutral-400 text-xs mb-5">
-                    Upload the official reference answers and marking scheme.
+                    Upload official reference model answers and marking scheme rubrics.
                   </p>
 
                   <input 
@@ -496,6 +599,124 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* Live Extracted Page Viewer (Direct Student Sheet OCR Preview) */}
+            {studentResult && showExtractionPreview && (
+              <div className="border border-[#27272a] rounded-lg p-5 bg-[#121214] space-y-4 shadow-xl">
+                <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span className="text-xs font-mono text-white font-semibold uppercase tracking-wider">
+                      PAGE-WISE OCR EXTRACTION ({studentResult.total_pages || studentResult.pages?.length || 1} PAGES TOTAL)
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => setShowExtractionPreview(false)}
+                    className="text-xs text-neutral-400 hover:text-white font-mono px-2 py-1 rounded hover:bg-neutral-800 transition-colors"
+                  >
+                    Hide Preview ✕
+                  </button>
+                </div>
+
+                {(() => {
+                  const pagesList = studentResult.pages && studentResult.pages.length > 0 
+                    ? studentResult.pages 
+                    : [{ page_number: 1, extracted_text: studentResult.full_text || "" }];
+                  const currPage = pagesList.find(p => (p.page_number || 1) === selectedPageNum) || (pagesList[0] || {});
+                  const imageUrl = currPage.image_url ? `${API_BASE}${currPage.image_url}` : null;
+                  const pageText = currPage.extracted_text || currPage.text || currPage.raw_text || studentResult.full_text || "";
+                  const detectedQuestions = currPage.questions_detected || currPage.detected_questions || [];
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Page selection buttons */}
+                      <div className="flex items-center space-x-2 pb-2 overflow-x-auto border-b border-neutral-800/80">
+                        <span className="text-[11px] text-neutral-500 font-mono flex-shrink-0">SELECT PAGE:</span>
+                        {pagesList.map((p, idx) => {
+                          const pNum = p.page_number || idx + 1;
+                          return (
+                            <button
+                              key={pNum}
+                              onClick={() => setSelectedPageNum(pNum)}
+                              className={`px-3 py-1 text-xs font-mono rounded border transition-colors flex-shrink-0 ${
+                                selectedPageNum === pNum 
+                                  ? 'border-white bg-white text-black font-semibold' 
+                                  : 'border-neutral-800 text-neutral-400 hover:border-neutral-600 bg-neutral-900'
+                              }`}
+                            >
+                              Page {pNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        {/* Left: Original Page Image */}
+                        <div className="border border-neutral-800 rounded-lg p-3 bg-neutral-950 space-y-2">
+                          <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400 pb-1 border-b border-neutral-900">
+                            <span>PAGE {selectedPageNum} ORIGINAL SCAN</span>
+                            <span className="text-neutral-500">Rendered Image</span>
+                          </div>
+                          <div className="flex items-center justify-center min-h-[440px] max-h-[580px] overflow-hidden bg-black/40 rounded">
+                            {imageUrl ? (
+                              <img 
+                                src={imageUrl} 
+                                alt={`Student Page ${selectedPageNum}`} 
+                                className="max-h-[560px] w-auto object-contain rounded"
+                              />
+                            ) : (
+                              <div className="text-center p-8 text-neutral-500 text-xs font-mono">
+                                <FileText className="w-12 h-12 mx-auto mb-2 text-neutral-700" />
+                                <p>Digital / Text file uploaded</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right: Extracted OCR Text */}
+                        <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-950 flex flex-col justify-between space-y-3">
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400 pb-1 border-b border-neutral-900">
+                              <span>EXTRACTED OCR TEXT</span>
+                              <span className="text-emerald-400 font-mono">
+                                Words: {currPage.word_count || (pageText.split(/\s+/).filter(Boolean).length)}
+                              </span>
+                            </div>
+
+                            <div>
+                              <p className="text-[10px] font-mono text-neutral-500 uppercase mb-1">Detected Questions:</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {detectedQuestions.length > 0 ? (
+                                  detectedQuestions.map(qId => (
+                                    <span key={qId} className="text-xs font-mono px-2.5 py-0.5 rounded border border-neutral-700 bg-neutral-900 text-white font-semibold">
+                                      {qId}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-neutral-500 font-mono italic">Continuous answer flow</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-[10px] font-mono text-neutral-500 uppercase mb-1">Text Stream on Page {selectedPageNum}:</p>
+                              <div className="p-3 bg-[#121214] rounded border border-neutral-800 text-xs font-mono text-neutral-300 whitespace-pre-wrap leading-relaxed max-h-[380px] overflow-y-auto">
+                                {pageText || "No text detected on this page."}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-neutral-900 text-[11px] text-neutral-500 font-mono flex items-center justify-between">
+                            <span className="text-emerald-400">✓ Page {selectedPageNum} Ready</span>
+                            <span>Upload Reference Key to evaluate</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             {/* Central Evaluation Button */}
             <div className="max-w-md mx-auto text-center space-y-3 pt-4">
@@ -720,17 +941,47 @@ export default function App() {
 
                           {/* AI Rubric & Evaluation Breakdown */}
                           <div className="p-4 rounded border border-neutral-800 bg-neutral-950/70 space-y-3">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <div className="flex items-center space-x-2">
                                 <Sparkles className="w-4 h-4 text-neutral-300" />
                                 <span className="text-xs font-mono uppercase text-white font-semibold">Evaluation Breakdown & Remarks</span>
                               </div>
-                              <span className="text-xs font-mono text-neutral-500">Verdict: {q.verdict}</span>
+                              <div className="flex items-center space-x-2">
+                                {q.dynamic_weights && (
+                                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
+                                    Sim {Math.round(q.dynamic_weights.sim * 100)}% | Con {Math.round(q.dynamic_weights.concept * 100)}% | Len {Math.round(q.dynamic_weights.length * 100)}%
+                                  </span>
+                                )}
+                                <span className="text-xs font-mono text-neutral-400 border border-neutral-800 px-2 py-0.5 rounded bg-neutral-900">
+                                  {q.verdict}
+                                </span>
+                              </div>
                             </div>
                             
                             <p className="text-xs text-neutral-300 leading-relaxed">
                               {q.explanation}
                             </p>
+
+                            {/* Structured Rubric Breakdown Table */}
+                            {q.rubric_breakdown && q.rubric_breakdown.length > 0 && (
+                              <div className="pt-2 border-t border-neutral-900 space-y-2">
+                                <p className="text-[11px] font-mono text-neutral-400 uppercase tracking-wide">Rubric Scoring Criteria:</p>
+                                <div className="space-y-1.5">
+                                  {q.rubric_breakdown.map((r, rIdx) => (
+                                    <div key={rIdx} className="flex items-center justify-between text-xs p-2 rounded bg-neutral-900/90 border border-neutral-800 font-mono">
+                                      <div className="flex items-center space-x-2 truncate pr-2">
+                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.status === 'FULL' ? 'bg-emerald-400' : (r.status === 'PARTIAL' ? 'bg-amber-400' : 'bg-red-400')}`} />
+                                        <span className="text-neutral-200 truncate">{r.component}</span>
+                                      </div>
+                                      <div className="flex items-center space-x-3 flex-shrink-0">
+                                        <span className="text-white font-semibold">{r.awarded} / {r.max} marks</span>
+                                        <span className="text-neutral-500 text-[10px]">({r.pct}%)</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
                             {/* Missing Concepts */}
                             {q.missing_key_concepts && q.missing_key_concepts.length > 0 && (
@@ -786,103 +1037,208 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 2: PAGE-WISE HANDWRITING VS OCR COMPARISON */}
+            {/* TAB 2: PAGE-WISE HANDWRITING VS OCR COMPARISON & EVALUATION */}
             {activeTab === "pages" && (
               <div className="space-y-6">
                 {/* Page selector buttons */}
-                <div className="flex items-center space-x-2 border-b border-[#27272a] pb-3 overflow-x-auto">
-                  <span className="text-xs text-neutral-500 font-mono">SELECT PAGE:</span>
-                  {(evaluationData.pages || [{ page_number: 1 }]).map((p, idx) => {
-                    const pNum = p.page_number || idx + 1;
-                    return (
-                      <button
-                        key={pNum}
-                        onClick={() => setSelectedPageNum(pNum)}
-                        className={`px-3 py-1 text-xs font-mono rounded border transition-colors ${
-                          selectedPageNum === pNum 
-                            ? 'border-white bg-white text-black font-semibold' 
-                            : 'border-neutral-800 text-neutral-400 hover:border-neutral-600'
-                        }`}
-                      >
-                        Page {pNum}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Side-by-side Page Comparison */}
                 {(() => {
-                  const currPage = (evaluationData.pages || []).find(p => (p.page_number || 1) === selectedPageNum) || (evaluationData.pages?.[0] || {});
-                  const imageUrl = currPage.image_url ? `${API_BASE}${currPage.image_url}` : null;
+                  const pagesList = (evaluationData.pages && evaluationData.pages.length > 0 && (evaluationData.pages[0].extracted_text || evaluationData.pages[0].text)) 
+                    ? evaluationData.pages 
+                    : (studentResult?.pages || evaluationData.pages || [{ page_number: 1 }]);
                   
+                  const currPage = pagesList.find(p => (p.page_number || 1) === selectedPageNum) || (pagesList[0] || {});
+                  const imageUrl = currPage.image_url ? `${API_BASE}${currPage.image_url}` : null;
+                  const pageText = currPage.extracted_text || currPage.text || currPage.raw_text || studentResult?.full_text || (Object.values(studentResult?.extracted_answers || {}).join("\n\n")) || "";
+                  const detectedQuestions = currPage.questions_detected || currPage.detected_questions || [];
+
+                  // Questions belonging to this specific page
+                  const pageEvaluations = (evaluationData.questions || []).filter(q => {
+                    if (detectedQuestions.includes(q.question_id)) return true;
+                    if (detectedQuestions.includes(`Q${q.question_number}`)) return true;
+                    // If single page doc, include all questions
+                    if (pagesList.length === 1) return true;
+                    // If page text contains the question text or answer
+                    if (pageText && q.extracted_student_answer && pageText.includes(q.extracted_student_answer.slice(0, 30))) return true;
+                    return false;
+                  });
+
                   return (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Left Side: Original Handwriting Page Image */}
-                      <div className="border border-[#27272a] rounded-lg p-4 bg-[#121214] space-y-3">
-                        <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
-                          <span className="text-xs font-mono text-neutral-400 uppercase">ORIGINAL STUDENT HANDWRITING (PAGE {selectedPageNum})</span>
-                          <span className="text-[11px] font-mono text-neutral-500">High-Resolution Render</span>
-                        </div>
-                        <div className="bg-neutral-950 rounded border border-neutral-800 flex items-center justify-center p-2 min-h-[500px] overflow-hidden">
-                          {imageUrl ? (
-                            <img 
-                              src={imageUrl} 
-                              alt={`Student Sheet Page ${selectedPageNum}`} 
-                              className="max-h-[650px] w-auto object-contain rounded shadow"
-                            />
-                          ) : (
-                            <div className="text-center text-neutral-600 text-xs font-mono">
-                              Page image rendered in backend storage.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right Side: Extracted OCR Text & Page Questions */}
-                      <div className="border border-[#27272a] rounded-lg p-4 bg-[#121214] flex flex-col justify-between space-y-4">
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
-                            <span className="text-xs font-mono text-neutral-400 uppercase">EXTRACTED OCR TEXT & QUESTIONS</span>
-                            <span className="text-[11px] font-mono text-neutral-500">Pipeline 1 Output</span>
-                          </div>
-
-                          {/* Detected Questions on this page */}
-                          <div>
-                            <p className="text-[11px] font-mono text-neutral-500 uppercase mb-2">Detected Questions On This Page:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {(currPage.detected_questions || []).length > 0 ? (
-                                currPage.detected_questions.map(qId => (
-                                  <span key={qId} className="text-xs font-mono px-2.5 py-1 rounded border border-neutral-700 bg-neutral-900 text-white">
-                                    Question {qId}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-xs text-neutral-500 font-mono">Continuous answer flow</span>
+                    <>
+                      {/* Top Page Selector Ribbon */}
+                      <div className="flex items-center space-x-2 border-b border-[#27272a] pb-3 overflow-x-auto">
+                        <span className="text-xs text-neutral-500 font-mono flex-shrink-0">PAGE NAVIGATOR:</span>
+                        {pagesList.map((p, idx) => {
+                          const pNum = p.page_number || idx + 1;
+                          const pQs = p.questions_detected || p.detected_questions || [];
+                          const isSelected = selectedPageNum === pNum;
+                          return (
+                            <button
+                              key={pNum}
+                              onClick={() => setSelectedPageNum(pNum)}
+                              className={`px-3 py-1.5 text-xs font-mono rounded border transition-all flex items-center space-x-1.5 flex-shrink-0 ${
+                                isSelected 
+                                  ? 'border-white bg-white text-black font-semibold shadow-md' 
+                                  : 'border-neutral-800 text-neutral-400 hover:border-neutral-600 bg-neutral-900/60'
+                              }`}
+                            >
+                              <span>Page {pNum}</span>
+                              {pQs.length > 0 && (
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded ${isSelected ? 'bg-neutral-800 text-white' : 'bg-neutral-800 text-neutral-300'}`}>
+                                  {pQs.join(', ')}
+                                </span>
                               )}
-                            </div>
-                          </div>
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                          {/* Full extracted page text */}
-                          <div>
-                            <p className="text-[11px] font-mono text-neutral-500 uppercase mb-2">Raw OCR Text Stream:</p>
-                            <div className="bg-neutral-950 p-4 rounded border border-neutral-800 text-xs font-mono text-neutral-300 whitespace-pre-wrap leading-relaxed max-h-[500px] overflow-y-auto">
-                              {currPage.text || currPage.raw_text || "No text extracted for this page."}
-                            </div>
+                      {/* Side-by-side Page Comparison */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left Side: Original Handwriting Page Image */}
+                        <div className="border border-[#27272a] rounded-lg p-4 bg-[#121214] space-y-3">
+                          <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
+                            <span className="text-xs font-mono text-neutral-400 uppercase">
+                              ORIGINAL HANDWRITTEN SHEET — PAGE {selectedPageNum}
+                            </span>
+                            <span className="text-[11px] font-mono text-neutral-500">Scan View</span>
+                          </div>
+                          <div className="bg-neutral-950 rounded border border-neutral-800 flex items-center justify-center p-4 min-h-[500px] max-h-[700px] overflow-auto">
+                            {imageUrl ? (
+                              <img 
+                                src={imageUrl} 
+                                alt={`Student Sheet Page ${selectedPageNum}`} 
+                                className="max-h-[660px] w-auto object-contain rounded shadow"
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center justify-center p-8 text-center space-y-2">
+                                <FileText className="w-12 h-12 text-neutral-600" />
+                                <p className="text-white text-xs font-mono font-semibold">Direct Extracted Document Loaded</p>
+                                <p className="text-neutral-500 text-[11px] font-mono max-w-xs">
+                                  Page content loaded directly from file stream. Extracted OCR is displayed on the right.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </div>
 
-                        <div className="pt-3 border-t border-neutral-800 flex items-center justify-between text-xs text-neutral-500">
-                          <span>Verify handwriting accuracy before grading</span>
-                          <button 
-                            onClick={() => setActiveTab("questions")}
-                            className="text-white hover:underline flex items-center space-x-1"
-                          >
-                            <span>Return to Question Grading</span>
-                            <ArrowRight className="w-3 h-3" />
-                          </button>
+                        {/* Right Side: Extracted OCR Text & Page Questions */}
+                        <div className="border border-[#27272a] rounded-lg p-4 bg-[#121214] flex flex-col justify-between space-y-4">
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
+                              <span className="text-xs font-mono text-neutral-400 uppercase">
+                                EXTRACTED OCR STREAM (PAGE {selectedPageNum})
+                              </span>
+                              <span className="text-[11px] font-mono text-emerald-400">
+                                {currPage.word_count || pageText.split(/\s+/).filter(Boolean).length} words
+                              </span>
+                            </div>
+
+                            {/* Detected Questions on this page */}
+                            <div>
+                              <p className="text-[11px] font-mono text-neutral-500 uppercase mb-1.5">Questions Located On Page {selectedPageNum}:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {detectedQuestions.length > 0 ? (
+                                  detectedQuestions.map(qId => (
+                                    <span key={qId} className="text-xs font-mono px-2.5 py-1 rounded border border-neutral-700 bg-neutral-900 text-white font-semibold">
+                                      {qId}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-neutral-500 font-mono italic">Continuous answer stream</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Full extracted page text */}
+                            <div>
+                              <p className="text-[11px] font-mono text-neutral-500 uppercase mb-1.5">Page Text Stream:</p>
+                              <div className="bg-neutral-950 p-4 rounded border border-neutral-800 text-xs font-mono text-neutral-300 whitespace-pre-wrap leading-relaxed max-h-[380px] overflow-y-auto">
+                                {pageText || "No text extracted for this page."}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pt-3 border-t border-neutral-800 flex items-center justify-between text-xs text-neutral-500">
+                            <span>Page {selectedPageNum} of {pagesList.length}</span>
+                            <button 
+                              onClick={() => setActiveTab("questions")}
+                              className="text-white hover:underline flex items-center space-x-1 font-mono"
+                            >
+                              <span>View All Questions</span>
+                              <ArrowRight className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
+
+                      {/* Evaluated Questions On This Page */}
+                      <div className="mt-8 space-y-4">
+                        <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                          <h4 className="text-sm font-semibold text-white tracking-wide uppercase font-mono">
+                            EVALUATED QUESTIONS ON PAGE {selectedPageNum} ({pageEvaluations.length})
+                          </h4>
+                          <span className="text-xs text-neutral-500 font-mono">Detailed assessment breakdown</span>
+                        </div>
+
+                        {pageEvaluations.length > 0 ? (
+                          <div className="space-y-4">
+                            {pageEvaluations.map(q => (
+                              <div key={q.question_id} className="border border-neutral-800 rounded-lg p-5 bg-[#121214] space-y-4">
+                                <div className="flex items-center justify-between pb-3 border-b border-neutral-800/80">
+                                  <div className="flex items-center space-x-3">
+                                    <span className="w-7 h-7 rounded border border-neutral-700 bg-neutral-950 flex items-center justify-center font-mono text-xs font-bold text-white">
+                                      {q.question_id}
+                                    </span>
+                                    <div>
+                                      <p className="text-sm font-semibold text-white">{q.question_text || `Question ${q.question_number || q.question_id}`}</p>
+                                      <span className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded border ${
+                                        q.status_badge === 'correct' ? 'border-emerald-500/50 text-emerald-400 bg-emerald-950/20' : 
+                                        (q.status_badge === 'partially_correct' ? 'border-amber-500/50 text-amber-400 bg-amber-950/20' : 'border-red-500/50 text-red-400 bg-red-950/20')
+                                      }`}>
+                                        {q.verdict} ({q.percentage}%)
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center space-x-3">
+                                    <div className="text-right">
+                                      <span className="text-lg font-bold text-white">{q.marks_awarded}</span>
+                                      <span className="text-xs text-neutral-500"> / {q.max_marks} Marks</span>
+                                    </div>
+                                    <button 
+                                      onClick={() => {
+                                        setOverrideTarget(q);
+                                        setOverrideMarks(q.marks_awarded);
+                                        setOverrideRemarks(q.teacher_remarks || "");
+                                        setOverrideAnswer(q.extracted_student_answer || "");
+                                      }}
+                                      className="text-xs border border-neutral-700 hover:border-white px-2.5 py-1 rounded text-neutral-300 hover:text-white transition-colors"
+                                    >
+                                      Override
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                                  <div className="p-3 bg-neutral-950 rounded border border-neutral-800">
+                                    <span className="text-neutral-500 block mb-1 uppercase text-[10px]">Student Answer Excerpt:</span>
+                                    <p className="text-neutral-300 whitespace-pre-wrap max-h-36 overflow-y-auto">{q.extracted_student_answer}</p>
+                                  </div>
+                                  <div className="p-3 bg-neutral-950 rounded border border-neutral-800">
+                                    <span className="text-neutral-500 block mb-1 uppercase text-[10px]">Evaluation Rationale:</span>
+                                    <p className="text-neutral-300 leading-relaxed max-h-36 overflow-y-auto">{q.explanation}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-6 rounded border border-neutral-800 bg-neutral-950 text-center text-xs text-neutral-500 font-mono">
+                            No discrete questions linked exclusively to Page {selectedPageNum}. All questions can be viewed under the "Question-wise Evaluation" tab.
+                          </div>
+                        )}
+                      </div>
+                    </>
                   );
                 })()}
               </div>
