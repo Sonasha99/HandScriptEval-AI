@@ -62,6 +62,7 @@ Thumbs.db
 # =========================
 # Node & Storage & Models
 # =========================
+models/
 node_modules/
 **/node_modules/
 storage/

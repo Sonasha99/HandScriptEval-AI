@@ -1,7 +1,4 @@
-"""
-IntelliPlace AI Answer Sheet Evaluation System
-Full-Stack Application Launcher
-"""
+
 
 import sys
 import os

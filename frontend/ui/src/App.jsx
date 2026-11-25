@@ -129,6 +129,8 @@ export default function App() {
   const handleStudentUpload = async (file) => {
     if (!file) return;
     setStudentFile(file);
+    setStudentResult(null);
+    setEvaluationData(null);
     setStudentUploading(true);
     setStudentUploadProgress(20);
     setErrorMessage("");
@@ -166,6 +168,8 @@ export default function App() {
   const handleReferenceUpload = async (file) => {
     if (!file) return;
     setReferenceFile(file);
+    setReferenceResult(null);
+    setEvaluationData(null);
     setReferenceUploading(true);
     setReferenceUploadProgress(20);
     setErrorMessage("");
@@ -303,6 +307,8 @@ export default function App() {
     setActiveTab("questions");
     setSelectedPageNum(1);
     setShowExtractionPreview(true);
+    if (studentInputRef.current) studentInputRef.current.value = "";
+    if (referenceInputRef.current) referenceInputRef.current.value = "";
   };
 
   // Filter questions
@@ -323,15 +329,10 @@ export default function App() {
             </div>
             <div>
               <span className="font-semibold text-white tracking-tight text-base">HandScriptEval AI</span>
-              <span className="text-neutral-500 text-xs ml-2 border border-neutral-800 px-1.5 py-0.5 rounded font-mono">v2.0</span>
             </div>
           </div>
           
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-xs text-neutral-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>FastAPI Backend Active</span>
-            </div>
             {(studentResult || referenceResult || evaluationData) && (
               <button 
                 onClick={handleReset}
@@ -408,7 +409,10 @@ export default function App() {
                   <input 
                     type="file" 
                     ref={studentInputRef} 
-                    onChange={(e) => handleStudentUpload(e.target.files?.[0])}
+                    onClick={(e) => { e.target.value = null; }}
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) handleStudentUpload(e.target.files[0]);
+                    }}
                     accept=".pdf,.png,.jpg,.jpeg,.webp,.txt" 
                     className="hidden" 
                   />
@@ -416,7 +420,12 @@ export default function App() {
                   {/* Drag drop area */}
                   {!studentFile ? (
                     <div 
-                      onClick={() => studentInputRef.current?.click()}
+                      onClick={() => {
+                        if (studentInputRef.current) {
+                          studentInputRef.current.value = "";
+                          studentInputRef.current.click();
+                        }
+                      }}
                       className="border border-dashed border-neutral-700 hover:border-neutral-500 rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-[#09090b]/50"
                     >
                       <div className="w-10 h-10 rounded-full border border-neutral-800 bg-neutral-900 flex items-center justify-center mb-3">
@@ -436,7 +445,13 @@ export default function App() {
                           </div>
                         </div>
                         <button 
-                          onClick={() => { setStudentFile(null); setStudentResult(null); }}
+                          type="button"
+                          onClick={() => { 
+                            setStudentFile(null); 
+                            setStudentResult(null); 
+                            setEvaluationData(null);
+                            if (studentInputRef.current) studentInputRef.current.value = ""; 
+                          }}
                           className="text-neutral-500 hover:text-white p-1"
                         >
                           <X className="w-4 h-4" />
@@ -486,7 +501,13 @@ export default function App() {
                 <div className="mt-5 pt-4 border-t border-[#27272a]/60 flex items-center justify-between">
                   <span className="text-[11px] text-neutral-500">Isolated OCR Pipeline</span>
                   <button 
-                    onClick={() => studentInputRef.current?.click()}
+                    type="button"
+                    onClick={() => {
+                      if (studentInputRef.current) {
+                        studentInputRef.current.value = "";
+                        studentInputRef.current.click();
+                      }
+                    }}
                     disabled={studentUploading}
                     className="text-xs border border-neutral-700 hover:border-white px-3 py-1.5 rounded text-neutral-200 transition-colors bg-neutral-900"
                   >
@@ -527,7 +548,10 @@ export default function App() {
                   <input 
                     type="file" 
                     ref={referenceInputRef} 
-                    onChange={(e) => handleReferenceUpload(e.target.files?.[0])}
+                    onClick={(e) => { e.target.value = null; }}
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) handleReferenceUpload(e.target.files[0]);
+                    }}
                     accept=".txt,.pdf,.docx" 
                     className="hidden" 
                   />
@@ -535,7 +559,12 @@ export default function App() {
                   {/* Drag drop area */}
                   {!referenceFile ? (
                     <div 
-                      onClick={() => referenceInputRef.current?.click()}
+                      onClick={() => {
+                        if (referenceInputRef.current) {
+                          referenceInputRef.current.value = "";
+                          referenceInputRef.current.click();
+                        }
+                      }}
                       className="border border-dashed border-neutral-700 hover:border-neutral-500 rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-[#09090b]/50"
                     >
                       <div className="w-10 h-10 rounded-full border border-neutral-800 bg-neutral-900 flex items-center justify-center mb-3">
@@ -555,7 +584,13 @@ export default function App() {
                           </div>
                         </div>
                         <button 
-                          onClick={() => { setReferenceFile(null); setReferenceResult(null); }}
+                          type="button"
+                          onClick={() => { 
+                            setReferenceFile(null); 
+                            setReferenceResult(null); 
+                            setEvaluationData(null);
+                            if (referenceInputRef.current) referenceInputRef.current.value = ""; 
+                          }}
                           className="text-neutral-500 hover:text-white p-1"
                         >
                           <X className="w-4 h-4" />
@@ -590,7 +625,13 @@ export default function App() {
                 <div className="mt-5 pt-4 border-t border-[#27272a]/60 flex items-center justify-between">
                   <span className="text-[11px] text-neutral-500">Separate Evaluation Model</span>
                   <button 
-                    onClick={() => referenceInputRef.current?.click()}
+                    type="button"
+                    onClick={() => {
+                      if (referenceInputRef.current) {
+                        referenceInputRef.current.value = "";
+                        referenceInputRef.current.click();
+                      }
+                    }}
                     disabled={referenceUploading}
                     className="text-xs border border-neutral-700 hover:border-white px-3 py-1.5 rounded text-neutral-200 transition-colors bg-neutral-900"
                   >
