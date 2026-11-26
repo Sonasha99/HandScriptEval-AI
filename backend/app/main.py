@@ -52,6 +52,19 @@ def startup_event():
 def health_check():
     return {"status": "healthy", "system": "HandScriptEval AI"}
 
+@app.get("/api/qwen-url")
+def get_qwen_url():
+    from .services.ocr_service import get_remote_qwen_url
+    return {"qwen_url": get_remote_qwen_url()}
+
+@app.post("/api/qwen-url")
+def set_qwen_url(payload: dict):
+    from .services.ocr_service import QWEN_URL_FILE
+    url = str(payload.get("url", "")).strip().rstrip("/")
+    QWEN_URL_FILE.parent.mkdir(parents=True, exist_ok=True)
+    QWEN_URL_FILE.write_text(url, encoding="utf-8")
+    return {"status": "saved", "qwen_url": url}
+
 # Mount Frontend production build if available
 if os.path.exists(FRONTEND_DIST_DIR):
     assets_dir = os.path.join(FRONTEND_DIST_DIR, "assets")

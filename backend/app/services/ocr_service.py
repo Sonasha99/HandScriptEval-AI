@@ -11,6 +11,21 @@ logger = logging.getLogger(__name__)
 PAGE_IMAGES_BASE = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "page_images"
 PAGE_IMAGES_BASE.mkdir(parents=True, exist_ok=True)
 STUDENT_SHEETS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "student_sheets"
+QWEN_URL_FILE = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "qwen_url.txt"
+
+def get_remote_qwen_url() -> str:
+    """Returns configured Colab GPU Qwen URL from env or storage/qwen_url.txt."""
+    env_url = os.environ.get("QWEN_COLAB_URL", "").strip().rstrip("/")
+    if env_url:
+        return env_url
+    if QWEN_URL_FILE.exists():
+        try:
+            url = QWEN_URL_FILE.read_text(encoding="utf-8").strip().rstrip("/")
+            if url.startswith("http"):
+                return url
+        except Exception:
+            pass
+    return ""
 
 # Global Vision Model placeholders (lazy loaded)
 _vlm_model = None
@@ -54,37 +69,40 @@ def transcribe_image_trocr(img: Image.Image) -> str:
         return ""
 
 def get_qwen_vlm():
-    """Lazily loads Qwen2.5-VL-3B-Instruct processor and model."""
+    """
+    Lazily loads Qwen2.5-VL-3B-Instruct ONLY when CUDA is available.
+    On CPU-only machines this model takes 2-6 GB RAM and 130+ seconds to load,
+    causing laptop to hang. Skip it; use Colab GPU URL instead.
+    """
     global _vlm_model, _vlm_proc, _QWEN_FAILED
     if _QWEN_FAILED:
         return None, None
+    # ---- SAFETY: never load 3B VLM on CPU-only machine ----
+    if not torch.cuda.is_available():
+        logger.info("CPU-only detected: local Qwen2.5-VL disabled to prevent system hang. Set QWEN_COLAB_URL or storage/qwen_url.txt to use GPU Qwen.")
+        _QWEN_FAILED = True
+        return None, None
     if _vlm_model is None or _vlm_proc is None:
         try:
-            logger.info("Attempting local load of Qwen2.5-VL-3B-Instruct vision model...")
+            logger.info("Attempting local load of Qwen2.5-VL-3B-Instruct vision model (GPU detected)...")
             from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
-            
-            # Determine path: use direct local snapshot directory if present, else repo id
             model_path = str(LOCAL_QWEN_DIR) if LOCAL_QWEN_DIR.exists() else QWEN_MODEL_ID
-            
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            dtype = torch.bfloat16 if (device == "cuda" and torch.cuda.get_device_capability()[0] >= 8) else (torch.float16 if device == "cuda" else torch.float32)
-            
+            device = "cuda"
+            major, _ = torch.cuda.get_device_capability()
+            dtype = torch.bfloat16 if major >= 8 else torch.float16
             _vlm_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_path,
                 torch_dtype=dtype,
-                device_map="auto" if device == "cuda" else None,
+                device_map="auto",
                 low_cpu_mem_usage=True,
                 local_files_only=True
             )
             _vlm_proc = AutoProcessor.from_pretrained(
                 model_path,
-                min_pixels=256 * 28 * 28,
-                max_pixels=768 * 28 * 28,
+                min_pixels=512 * 28 * 28,
+                max_pixels=1280 * 28 * 28,
                 local_files_only=True
             )
-            if device == "cpu":
-                _vlm_model = _vlm_model.to("cpu")
-                torch.set_num_threads(min(8, os.cpu_count() or 4))
             _vlm_model.eval()
             _vlm_proc.tokenizer.padding_side = "left"
         except Exception as e:
@@ -96,16 +114,48 @@ def get_qwen_vlm():
 
 def transcribe_image_qwen(img: Image.Image) -> str:
     """
-    Transcribes an image using Qwen2.5-VL-3B-Instruct
-    matching CELL 3 of Another_copy_of_Untitled0.ipynb.
+    Transcribes an image using Qwen2.5-VL-3B-Instruct.
+    Uses remote Colab GPU server if QWEN_COLAB_URL / storage/qwen_url.txt is set,
+    otherwise runs local Qwen (resizing image for CPU speed).
     """
+    remote_url = get_remote_qwen_url()
+    if remote_url:
+        try:
+            import io, requests
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            resp = requests.post(
+                f"{remote_url}/ocr",
+                files={"file": ("page.png", buf, "image/png")},
+                timeout=90,
+            )
+            if resp.status_code == 200:
+                text = (resp.json().get("text") or "").strip()
+                if text:
+                    logger.info(f"Remote Colab Qwen extracted {len(text.split())} words in {resp.json().get('seconds')}s")
+                    return text
+            logger.warning(f"Remote Colab Qwen returned HTTP {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"Remote Colab Qwen error ({e}); falling back to local Qwen")
+
     try:
         model, proc = get_qwen_vlm()
         if model is None or proc is None:
             return ""
         from qwen_vl_utils import process_vision_info
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        
+
+        # --- SPEED FIX: Resize image to max 896px on longest side before passing to Qwen ---
+        # Smaller image = fewer tokens = WAY faster inference on CPU
+        w, h = img.size
+        max_side = 896
+        if max(w, h) > max_side:
+            ratio = max_side / max(w, h)
+            new_w, new_h = max(1, int(w * ratio)), max(1, int(h * ratio))
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            logger.info(f"Qwen: resized image {w}x{h} -> {new_w}x{new_h} for CPU speed")
+
         prompt = (
             "You are a precise OCR engine. Transcribe every word, number, and symbol "
             "from this page—both printed and handwritten—in natural reading order. "
@@ -113,7 +163,7 @@ def transcribe_image_qwen(img: Image.Image) -> str:
             "Do not summarize, translate, or guess illegible words; mark unclear words as [?]. "
             "Output only the transcribed text."
         )
-        
+
         messages = [
             {
                 "role": "user",
@@ -123,7 +173,7 @@ def transcribe_image_qwen(img: Image.Image) -> str:
                 ],
             }
         ]
-        
+
         texts = [proc.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)]
         image_inputs, _ = process_vision_info(messages)
         inputs = proc(
@@ -132,18 +182,27 @@ def transcribe_image_qwen(img: Image.Image) -> str:
             padding=True,
             return_tensors="pt",
         ).to(device)
-        
+
+        logger.info(f"Qwen generate: input_tokens={inputs.input_ids.shape[1]}, max_new=300")
+        gen_kwargs = {
+            "max_new_tokens": 300,
+            "do_sample": False,
+            "use_cache": True,
+        }
+        if device == "cpu":
+            # Prevent indefinite HTTP timeouts on CPU-only hardware
+            gen_kwargs["max_time"] = 45.0
         with torch.inference_mode():
             generated_ids = model.generate(
                 **inputs,
-                max_new_tokens=512,
-                do_sample=False,
-                use_cache=True,
+                **gen_kwargs,
             )
-            
+
         trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
         decoded = proc.batch_decode(trimmed, skip_special_tokens=True)
-        return decoded[0].strip() if decoded else ""
+        result = decoded[0].strip() if decoded else ""
+        logger.info(f"Qwen extracted {len(result.split())} words")
+        return result
     except Exception as e:
         logger.error(f"Qwen VLM transcription error: {e}", exc_info=True)
         return ""
@@ -321,6 +380,14 @@ def process_student_document(file_path: str, file_id: str, original_filename: st
                         start_idx = p_matches[mi].end()
                         end_idx = p_matches[mi + 1].start() if mi + 1 < len(p_matches) else len(companion_text)
                         comp_page_map[p_num] = companion_text[start_idx:end_idx].strip()
+            # If companion text has no explicit PAGE markers, distribute lines across PDF pages
+            # so known student sheets don't fall back to slow CPU vision OCR on every page.
+            if not comp_page_map and num_pages > 0:
+                lines = companion_text.splitlines()
+                chunk_size = max(1, (len(lines) + num_pages - 1) // num_pages)
+                for p_idx in range(num_pages):
+                    chunk = "\n".join(lines[p_idx * chunk_size:(p_idx + 1) * chunk_size]).strip()
+                    comp_page_map[p_idx + 1] = chunk
         
         for idx in range(num_pages):
             page_num = idx + 1
