@@ -67,7 +67,7 @@ def get_qwen_vlm():
             model_path = str(LOCAL_QWEN_DIR) if LOCAL_QWEN_DIR.exists() else QWEN_MODEL_ID
             
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            dtype = torch.bfloat16 if (device == "cuda" and torch.cuda.get_device_capability()[0] >= 8) else (torch.float16 if device == "cuda" else torch.bfloat16)
+            dtype = torch.bfloat16 if (device == "cuda" and torch.cuda.get_device_capability()[0] >= 8) else (torch.float16 if device == "cuda" else torch.float32)
             
             _vlm_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_path,
@@ -84,6 +84,7 @@ def get_qwen_vlm():
             )
             if device == "cpu":
                 _vlm_model = _vlm_model.to("cpu")
+                torch.set_num_threads(min(8, os.cpu_count() or 4))
             _vlm_model.eval()
             _vlm_proc.tokenizer.padding_side = "left"
         except Exception as e:
@@ -135,15 +136,16 @@ def transcribe_image_qwen(img: Image.Image) -> str:
         with torch.inference_mode():
             generated_ids = model.generate(
                 **inputs,
-                max_new_tokens=1024,
+                max_new_tokens=512,
                 do_sample=False,
+                use_cache=True,
             )
             
         trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
         decoded = proc.batch_decode(trimmed, skip_special_tokens=True)
         return decoded[0].strip() if decoded else ""
     except Exception as e:
-        logger.warning(f"Qwen VLM transcription error: {e}")
+        logger.error(f"Qwen VLM transcription error: {e}", exc_info=True)
         return ""
 
 def transcribe_vision_page(img: Image.Image) -> str:
